@@ -1,0 +1,11 @@
+[package]
+name = "git-sys"
+version = "0.1.0"
+authors = ["chip <chip@chip.sh>"]
+edition = "2018"
+
+[build-dependencies]
+bindgen = "0.52"
+make-cmd = "=0.1.0"
+num_cpus = "1"
+git-sys-header = { path = "../git-sys-header" }

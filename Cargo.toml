@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "git",
+    "git-sys",
+    "git-sys-header",
+    "gitsplode"
+]

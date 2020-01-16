@@ -141,8 +141,8 @@ mod header {
     use bindgen::{builder, Builder};
     use serde::Deserialize;
     use std::convert::TryFrom;
+    use std::ffi::OsStr;
     use std::fs::{read_to_string, DirEntry};
-    use std::path::Path;
 
     #[derive(Debug, Deserialize)]
     struct Filter {
@@ -212,7 +212,11 @@ mod header {
             }
 
             // set the name of the header to the filename minus the extension
-            header.name = file_stem(&path)?;
+            header.name = path
+                .file_stem()
+                .and_then(OsStr::to_str)
+                .map(str::to_string)
+                .ok_or_else(|| anyhow!("no valid filename stem for header template found"))?;
 
             Ok(header)
         }
@@ -239,16 +243,5 @@ mod header {
 
             builder
         }
-    }
-
-    /// Get the name of a file from a path, without the file extension
-    fn file_stem(path: &Path) -> Result<String, anyhow::Error> {
-        path.file_stem()
-            .map(|name| name.to_os_string())
-            .ok_or_else(|| anyhow!("no filename stem for header template found"))
-            .and_then(|name| {
-                name.into_string()
-                    .map_err(|bad| anyhow!("invalid utf-8 in header template filename: {:?}", bad))
-            })
     }
 }

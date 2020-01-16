@@ -121,6 +121,9 @@ dependencies = [
 [[package]]
 name = "git"
 version = "0.1.0"
+dependencies = [
+ "git-sys 0.1.0",
+]
 
 [[package]]
 name = "git-sys"
@@ -137,6 +140,9 @@ dependencies = [
 [[package]]
 name = "gitsplode"
 version = "0.1.0"
+dependencies = [
+ "git 0.1.0",
+]
 
 [[package]]
 name = "glob"

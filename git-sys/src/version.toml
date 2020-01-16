@@ -1,1 +1,5 @@
 header = "#include <version.h>"
+
+[[whitelist]]
+item = "item"
+name = "git_version_string"

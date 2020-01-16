@@ -179,7 +179,7 @@ mod header {
     }
 
     #[derive(Debug, Deserialize)]
-    #[serde(untagged, rename_all = "lowercase")]
+    #[serde(rename_all = "lowercase")]
     enum Item {
         Function,
         Item,

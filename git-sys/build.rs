@@ -11,11 +11,12 @@ use std::process::{Command, ExitStatus};
 const HEADER_PREFIX: &str = r#"
 #define NO_OPENSSL
 #define NO_CURL
+#include <git-compat-util.h>
 "#;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let src = root.join("src");
+    let bindings = root.join("src").join("bindings");
     let lib = root.join("lib");
     let out = PathBuf::from(var("OUT_DIR").expect("OUT_DIR env var not found"));
 
@@ -69,18 +70,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("cargo:rustc-link-lib=z");
 
     // collect all header template files, only if none of them had an error
-    let headers = read_dir(&src)?
+    let headers = read_dir(&bindings)?
         .filter(is_toml)
         .map(dir_entry_to_header)
         .collect::<Result<Vec<Header>, _>>()?;
 
-    // the root module that contains the following bindings
-    let mut root_module = String::new();
+    let mut imports = String::new();
+    let mut mods = String::new();
+
+    // open bindings module
+    mods.push_str("pub mod bindings {\n");
 
     for header in headers {
         // generate bindings for the header file
         let bindings = header
-            .builder(&HEADER_PREFIX)
+            .builder()
             .clang_arg(format!("-I/{}", lib.display()))
             .generate()
             .expect("unable to generate bindings");
@@ -89,13 +93,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let out_file = out.join(format!("{}.rs", header.name));
         bindings.write_to_file(out_file)?;
 
-        // include our generated file inside of the root module
-        root_module.push_str(&format!("pub use {}::*;\n", header.name));
-        root_module.push_str(&format!(
-            "mod version {{ include!(concat!(env!(\"OUT_DIR\"), \"/{}.rs\")); }}\n",
+        // create a nested module to house the generated binding code
+        mods.push_str(&format!(
+            "pub mod {0} {{ include!(concat!(env!(\"OUT_DIR\"), \"/{0}.rs\")); }}\n",
             header.name
         ));
+
+        // import all our items from our generated binding module to the root module
+        imports.push_str("#[doc(inline)]\n");
+        imports.push_str(&format!("pub use crate::bindings::{}::*;\n", header.name));
     }
+
+    // close bindings module
+    mods.push_str("}");
+
+    let root_module = format!("{}\n{}", imports, mods);
 
     // write out the root module so that we can include it from our src/lib.rs
     write(out.join("lib.rs"), root_module)?;
@@ -137,48 +149,21 @@ impl SuccessOrPanic for ExitStatus {
 
 /// Items to help represent a header as a TOML file
 mod header {
+    use crate::HEADER_PREFIX;
     use anyhow::anyhow;
     use bindgen::{builder, Builder};
     use serde::Deserialize;
+    use std::collections::HashMap;
     use std::convert::TryFrom;
     use std::ffi::OsStr;
     use std::fs::{read_to_string, DirEntry};
 
-    #[derive(Debug, Deserialize)]
-    struct Filter {
-        item: Item,
-        name: String,
-    }
-
-    #[derive(Debug, Copy, Clone)]
     enum FilterType {
         Whitelist,
         Blacklist,
     }
 
-    impl Filter {
-        /// Apply a filter to a [`Builder`](bindgen::Builder)
-        fn apply(&self, builder: Builder, filter_type: FilterType) -> Builder {
-            // set the type of filter to be used
-            let filterer = match filter_type {
-                FilterType::Whitelist => match self.item {
-                    Item::Function => Builder::whitelist_function,
-                    Item::Type => Builder::whitelist_type,
-                    Item::Item => Builder::whitelist_var,
-                },
-                FilterType::Blacklist => match self.item {
-                    Item::Function => Builder::blacklist_function,
-                    Item::Type => Builder::blacklist_type,
-                    Item::Item => Builder::blacklist_item,
-                },
-            };
-
-            // apply the filter to the [`Builder`](bindgen::Builder)
-            filterer(builder, &self.name)
-        }
-    }
-
-    #[derive(Debug, Deserialize)]
+    #[derive(Deserialize)]
     #[serde(rename_all = "lowercase")]
     enum Item {
         Function,
@@ -186,13 +171,17 @@ mod header {
         Type,
     }
 
-    #[derive(Debug, Deserialize)]
+    #[derive(Deserialize)]
+    pub struct HeaderTemplate {
+        header: String,
+        whitelist: Option<HashMap<String, Item>>,
+        blacklist: Option<HashMap<String, Item>>,
+    }
+
     pub struct Header {
-        #[serde(skip)]
         pub name: String,
         header: String,
-        whitelist: Option<Vec<Filter>>,
-        blacklist: Option<Vec<Filter>>,
+        filters: Option<(FilterType, HashMap<String, Item>)>,
     }
 
     impl TryFrom<DirEntry> for Header {
@@ -201,43 +190,65 @@ mod header {
         fn try_from(entry: DirEntry) -> Result<Self, Self::Error> {
             let path = entry.path();
             let raw = read_to_string(&path)?;
-            let mut header: Self = toml::from_str(&raw)?;
+            let template: HeaderTemplate = toml::from_str(&raw)?;
 
-            // reject the header if it specifies both types of filter
-            if header.whitelist.is_some() && header.blacklist.is_some() {
-                return Err(anyhow!(
-                    "found both whitelist and blacklist for {}",
-                    path.display()
-                ));
-            }
+            let filters = match (template.whitelist, template.blacklist) {
+                (None, None) => None,
+                (Some(whitelist), None) => Some((FilterType::Whitelist, whitelist)),
+                (None, Some(blacklist)) => Some((FilterType::Blacklist, blacklist)),
+                // reject the header if it specifies both types of filter
+                (Some(_), Some(_)) => {
+                    return Err(anyhow!(
+                        "found both whitelist and blacklist for {}",
+                        path.display()
+                    ));
+                }
+            };
 
             // set the name of the header to the filename minus the extension
-            header.name = path
+            let name = path
                 .file_stem()
                 .and_then(OsStr::to_str)
                 .map(str::to_string)
                 .ok_or_else(|| anyhow!("no valid filename stem for header template found"))?;
 
-            Ok(header)
+            // prefix the header with some global preprocessor directives
+            let header = format!("{}\n{}", HEADER_PREFIX, template.header);
+
+            Ok(Header {
+                name,
+                header,
+                filters,
+            })
         }
     }
 
     impl Header {
         /// Create a [`Builder`](bindgen::Builder) from a [`Header`]
-        pub fn builder(&self, prefix: impl AsRef<str>) -> Builder {
+        pub fn builder(&self) -> Builder {
             // apply the header to the builder
             let filename = format!("{}.h", &self.name);
-            let content = format!("{}\n{}", prefix.as_ref(), &self.header);
-            let mut builder = builder().header_contents(&filename, &content);
-
-            // represent the filters along with their type
-            let whitelist = self.whitelist.as_ref().map(|f| (f, FilterType::Whitelist));
-            let blacklist = self.blacklist.as_ref().map(|f| (f, FilterType::Blacklist));
+            let mut builder = builder().header_contents(&filename, &self.header);
 
             // apply the found filters
-            if let Some((filters, filter_type)) = whitelist.or(blacklist) {
-                for filter in filters {
-                    builder = filter.apply(builder, filter_type);
+            if let Some((filter_type, filters)) = &self.filters {
+                for (name, item) in filters {
+                    // set the type of filter to be used on an item
+                    let filter = match filter_type {
+                        FilterType::Whitelist => match item {
+                            Item::Function => Builder::whitelist_function,
+                            Item::Type => Builder::whitelist_type,
+                            Item::Item => Builder::whitelist_var,
+                        },
+                        FilterType::Blacklist => match item {
+                            Item::Function => Builder::blacklist_function,
+                            Item::Type => Builder::blacklist_type,
+                            Item::Item => Builder::blacklist_item,
+                        },
+                    };
+
+                    // apply the filter to the item name
+                    builder = filter(builder, name);
                 }
             };
 

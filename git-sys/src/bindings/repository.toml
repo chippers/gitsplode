@@ -1,0 +1,5 @@
+header = "#include <repository.h>"
+
+[whitelist]
+the_repository = "item"
+initialize_the_repository = "function"

@@ -1,0 +1,4 @@
+header = "#include <gettext.h>"
+
+[whitelist]
+git_setup_gettext = "function"

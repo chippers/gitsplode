@@ -1,3 +1,13 @@
+use git::Repository;
+use std::ffi::CString;
+
 fn main() {
-    println!("Hello, world!");
+    let version = git::version();
+    println!("git version: {}", version);
+
+    let gitdir = CString::new("./.git").unwrap();
+    let worktree = CString::new(".").unwrap();
+    let repo = Repository::init(gitdir, worktree);
+
+    println!("gitdir: {}", repo.gitdir())
 }

@@ -1,10 +1,12 @@
-use bstr::BStr;
 use git_sys::git_version_string;
-use std::ffi::{CStr, CString};
+use std::borrow::Cow;
+use std::ffi::{CStr, CString, OsStr};
+use std::fmt;
 use std::mem::MaybeUninit;
+use std::os::raw::c_char;
+use std::path::Path;
 use std::sync::Once;
 
-#[derive(Debug)]
 pub struct Repository(git_sys::repository);
 
 impl Repository {
@@ -21,9 +23,43 @@ impl Repository {
         }
     }
 
-    pub fn gitdir(&self) -> &BStr {
-        let cstr = unsafe { CStr::from_ptr(self.0.gitdir) };
-        cstr.to_bytes().into()
+    pub fn gitdir(&self) -> Cow<'_, Path> {
+        self.c_char_to_path(self.0.gitdir)
+    }
+
+    pub fn commondir(&self) -> Cow<'_, Path> {
+        self.c_char_to_path(self.0.commondir)
+    }
+
+    fn c_char_to_path(&self, ptr: *const c_char) -> Cow<'_, Path> {
+        let bytes = unsafe { CStr::from_ptr(ptr) }.to_bytes();
+        let path;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt;
+            path = Cow::Borrowed(OsStr::from_bytes(bytes).as_ref());
+        }
+
+        #[cfg(windows)]
+        {
+            use std::path::PathBuf;
+            match bytes.to_os_str_lossy() {
+                Cow::Owned(string) => path = Cow::Owned(PathBuf::from(string)),
+                Cow::Borrowed(s) => path = Cow::Borrowed(s.as_ref()),
+            }
+        }
+
+        path
+    }
+}
+
+impl fmt::Debug for Repository {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Repository")
+            .field("gitdir", &self.gitdir())
+            .field("commondir", &self.commondir())
+            .finish()
     }
 }
 

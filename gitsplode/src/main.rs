@@ -9,5 +9,7 @@ fn main() {
     let worktree = CString::new(".").unwrap();
     let repo = Repository::init(gitdir, worktree);
 
-    println!("gitdir: {}", repo.gitdir())
+    dbg!(&repo);
+
+    println!("gitdir: {}", repo.gitdir().display())
 }

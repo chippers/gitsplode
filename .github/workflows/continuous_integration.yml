@@ -41,9 +41,7 @@ jobs:
           - beta
           - nightly
         os:
-          - ubuntu-latest
-          - windows-latest
-          - macOS-latest
+          - ubuntu-18.04
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -55,6 +53,13 @@ jobs:
           profile: minimal
           toolchain: ${{ matrix.rust }}
           override: true
+
+      - name: Install system dependencies on ubuntu
+        if: matrix.os == 'ubuntu-18.04'
+        run: wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key 2>/dev/null | sudo apt-key add -
+          && sudo DEBIAN_FRONTEND=noninteractive add-apt-repository 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-9 main' -y
+          && sudo DEBIAN_FRONTEND=noninteractive apt-get update -q
+          && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y llvm-9-dev libclang-9-dev clang-9 gettext
 
       - name: Test
         uses: actions-rs/cargo@v1

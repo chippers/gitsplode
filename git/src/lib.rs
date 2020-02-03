@@ -1,29 +1,28 @@
-use bstr::BStr;
 use git_sys::git_version_string;
-use std::ffi::{CStr, CString};
-use std::mem::MaybeUninit;
+use std::ffi::CStr;
 use std::sync::Once;
 
-#[derive(Debug)]
-pub struct Repository(git_sys::repository);
+pub struct Git {
+    repository: *mut git_sys::repository,
+}
 
-impl Repository {
-    pub fn init(gitdir: CString, worktree: CString) -> Self {
-        let mut repo = MaybeUninit::<git_sys::repository>::uninit();
-        unsafe {
-            git_sys::repo_init(
-                repo.as_mut_ptr(),
-                dbg!(gitdir.as_ptr()),
-                dbg!(worktree.as_ptr()),
-            );
+static INIT_GIT: Once = Once::new();
+static mut GIT: Git = Git {
+    repository: std::ptr::null_mut(),
+};
 
-            Self(repo.assume_init())
-        }
-    }
+/// FIXME: is this unsafe? essentially potentially exposing a static !Send ptr across threads
+pub fn init() -> &'static Git {
+    unsafe {
+        INIT_GIT.call_once(|| {
+            git_sys::git_setup_gettext();
+            git_sys::attr_start();
+            git_sys::initialize_the_repository();
 
-    pub fn gitdir(&self) -> &BStr {
-        let cstr = unsafe { CStr::from_ptr(self.0.gitdir) };
-        cstr.to_bytes().into()
+            GIT.repository = git_sys::the_repository;
+        });
+
+        &GIT
     }
 }
 

@@ -12,23 +12,23 @@ enum Filter {
     Var,
 }
 
-const WHITELIST: &[(&str, Filter)] = &[
+const WHITELIST: &[(Filter, &str)] = &[
     //
     // cache
-    ("startup_info", Var),
-    ("setup_git_directory_gently", Function),
+    (Var, "startup_info"),
+    (Function, "setup_git_directory_gently"),
     //
     // repository
-    ("the_repository", Var),
-    ("initialize_the_repository", Function),
-    ("repo_init", Function),
+    (Var, "the_repository"),
+    (Function, "initialize_the_repository"),
+    (Function, "repo_init"),
     //
     // revisions
-    ("add_head_to_pending", Function),
-    ("repo_init_revisions", Function),
+    (Function, "add_head_to_pending"),
+    (Function, "repo_init_revisions"),
     //
     // version
-    ("git_version_string", Var),
+    (Var, "git_version_string"),
 ];
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -88,7 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // apply our whitelist filters to a [`Builder`](bindgen::Builder)
     let mut builder = Builder::default();
-    for (name, filter) in WHITELIST {
+    for (filter, name) in WHITELIST {
         builder = match filter {
             Function => builder.whitelist_function(name),
             // Type => builder.whitelist_type(name),

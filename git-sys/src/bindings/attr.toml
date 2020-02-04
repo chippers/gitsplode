@@ -1,4 +1,0 @@
-header = "#include <attr.h>"
-
-[whitelist]
-attr_start = "function"

@@ -16,6 +16,7 @@ const WHITELIST: &[(Filter, &str)] = &[
     //
     // cache
     (Var, "startup_info"),
+    (Function, "validate_cache_entries"),
     (Function, "setup_git_directory_gently"),
     //
     // repository

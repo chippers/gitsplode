@@ -1,5 +1,7 @@
 use git_sys::git_version_string;
 use std::ffi::CStr;
+use std::marker::PhantomData;
+use std::mem::MaybeUninit;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Once;
 use thiserror::Error;
@@ -14,7 +16,7 @@ pub enum InitError {
 
 #[derive(Debug)]
 pub struct Git {
-    repository: *mut git_sys::repository,
+    repo: *mut git_sys::repository,
     startup_info: *mut git_sys::startup_info,
 }
 
@@ -44,9 +46,37 @@ pub fn init() -> Result<Git, InitError> {
         }
 
         Ok(Git {
-            repository,
+            repo: repository,
             startup_info,
         })
+    }
+}
+
+pub struct Rev<'repo> {
+    pub rev_info: git_sys::rev_info,
+    _marker: PhantomData<&'repo Git>,
+}
+
+impl<'repo> Rev<'repo> {
+    pub fn new(git: &Git) -> Rev {
+        let mut rev_info = MaybeUninit::<git_sys::rev_info>::uninit();
+        let rev_info = unsafe {
+            git_sys::repo_init_revisions(
+                git.repo,
+                rev_info.as_mut_ptr(),
+                (*git.startup_info).prefix,
+            );
+            rev_info.assume_init()
+        };
+
+        Rev {
+            rev_info,
+            _marker: Default::default(),
+        }
+    }
+
+    pub fn add_head_to_pending(&mut self) {
+        unsafe { git_sys::add_head_to_pending(&mut self.rev_info) }
     }
 }
 

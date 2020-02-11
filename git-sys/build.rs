@@ -8,7 +8,7 @@ use std::process::{Command, ExitStatus};
 
 enum Filter {
     Function,
-    // Type,
+    Type,
     Var,
 }
 
@@ -25,6 +25,7 @@ const WHITELIST: &[(Filter, &str)] = &[
     (Function, "repo_init"),
     //
     // revisions
+    (Type, "rev_info"),
     (Function, "add_head_to_pending"),
     (Function, "repo_init_revisions"),
     //
@@ -92,7 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (filter, name) in WHITELIST {
         builder = match filter {
             Function => builder.whitelist_function(name),
-            // Type => builder.whitelist_type(name),
+            Type => builder.whitelist_type(name),
             Var => builder.whitelist_var(name),
         }
     }
